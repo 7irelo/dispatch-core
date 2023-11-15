@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DispatchCore.Core\DispatchCore.Core.csproj" />
+    <ProjectReference Include="..\DispatchCore.Storage\DispatchCore.Storage.csproj" />
+    <ProjectReference Include="..\DispatchCore.Locking\DispatchCore.Locking.csproj" />
+    <ProjectReference Include="..\DispatchCore.RateLimit\DispatchCore.RateLimit.csproj" />
+  </ItemGroup>
+</Project>

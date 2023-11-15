@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DispatchCore.Core\DispatchCore.Core.csproj" />
+    <ProjectReference Include="..\DispatchCore.Storage\DispatchCore.Storage.csproj" />
+    <ProjectReference Include="..\DispatchCore.Contracts\DispatchCore.Contracts.csproj" />
+  </ItemGroup>
+</Project>
