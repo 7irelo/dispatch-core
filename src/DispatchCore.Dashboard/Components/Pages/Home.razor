@@ -1,0 +1,137 @@
+@page "/"
+@using DispatchCore.Contracts
+@using DispatchCore.Core.Interfaces
+@inject IJobRepository JobRepo
+
+<div class="container">
+    <h2>Metrics Overview</h2>
+    @if (_metrics is not null)
+    {
+        <div class="card">
+            <div class="metrics-grid">
+                <div class="metric"><div class="value">@_metrics.TotalJobs</div><div class="label">Total</div></div>
+                <div class="metric"><div class="value">@_metrics.PendingJobs</div><div class="label">Pending</div></div>
+                <div class="metric"><div class="value">@_metrics.ScheduledJobs</div><div class="label">Scheduled</div></div>
+                <div class="metric"><div class="value">@_metrics.RunningJobs</div><div class="label">Running</div></div>
+                <div class="metric"><div class="value">@_metrics.SucceededJobs</div><div class="label">Succeeded</div></div>
+                <div class="metric"><div class="value">@_metrics.FailedJobs</div><div class="label">Failed</div></div>
+                <div class="metric"><div class="value">@_metrics.DeadLetterJobs</div><div class="label">Dead Letter</div></div>
+            </div>
+        </div>
+    }
+
+    <h2>Job Search</h2>
+    <div class="card">
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+            <input @bind="_searchTenantId" placeholder="Tenant ID" />
+            <select @bind="_statusFilter">
+                <option value="">All Statuses</option>
+                @foreach (var s in Enum.GetValues<JobStatus>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+            <button class="btn btn-primary" @onclick="SearchJobs">Search</button>
+        </div>
+
+        @if (_jobs.Any())
+        {
+            <table>
+                <thead>
+                    <tr>
+                        <th>Job ID</th>
+                        <th>Tenant</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Attempts</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var job in _jobs)
+                    {
+                        <tr>
+                            <td><a href="/jobs/@job.JobId">@job.JobId.ToString()[..8]...</a></td>
+                            <td>@job.TenantId</td>
+                            <td>@job.Type</td>
+                            <td><span class="badge badge-@job.Status.ToString().ToLower()">@job.Status</span></td>
+                            <td>@job.Attempts / @job.MaxAttempts</td>
+                            <td>@job.CreatedAt.ToString("g")</td>
+                            <td>
+                                @if (job.Status is JobStatus.Pending or JobStatus.Scheduled)
+                                {
+                                    <button class="btn btn-danger" @onclick="() => CancelJob(job.JobId)">Cancel</button>
+                                }
+                                @if (job.Status is JobStatus.DeadLetter)
+                                {
+                                    <button class="btn btn-warning" @onclick="() => RequeueJob(job.JobId)">Requeue</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else if (_searched)
+        {
+            <p>No jobs found.</p>
+        }
+    </div>
+</div>
+
+@code {
+    private MetricsResponse? _metrics;
+    private List<DispatchCore.Core.Models.Job> _jobs = new();
+    private string _searchTenantId = "";
+    private string _statusFilter = "";
+    private bool _searched;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _metrics = await JobRepo.GetMetricsAsync();
+    }
+
+    private async Task SearchJobs()
+    {
+        _searched = true;
+        if (string.IsNullOrWhiteSpace(_searchTenantId))
+        {
+            _jobs = new();
+            return;
+        }
+
+        var allJobs = await JobRepo.GetByTenantAsync(_searchTenantId, 100);
+        _jobs = string.IsNullOrEmpty(_statusFilter)
+            ? allJobs.ToList()
+            : allJobs.Where(j => j.Status.ToString() == _statusFilter).ToList();
+    }
+
+    private async Task CancelJob(Guid jobId)
+    {
+        var job = await JobRepo.GetByIdAsync(jobId);
+        if (job is null) return;
+        job.Status = JobStatus.Failed;
+        job.LastError = "Cancelled via dashboard";
+        job.LockedBy = null;
+        job.LockUntil = null;
+        await JobRepo.UpdateAsync(job);
+        await SearchJobs();
+        _metrics = await JobRepo.GetMetricsAsync();
+    }
+
+    private async Task RequeueJob(Guid jobId)
+    {
+        var job = await JobRepo.GetByIdAsync(jobId);
+        if (job is null) return;
+        job.Status = JobStatus.Pending;
+        job.Attempts = 0;
+        job.LastError = null;
+        job.RunAt = DateTimeOffset.UtcNow;
+        job.LockedBy = null;
+        job.LockUntil = null;
+        await JobRepo.UpdateAsync(job);
+        await SearchJobs();
+        _metrics = await JobRepo.GetMetricsAsync();
+    }
+}

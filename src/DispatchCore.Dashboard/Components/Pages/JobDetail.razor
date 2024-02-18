@@ -1,0 +1,85 @@
+@page "/jobs/{JobId:guid}"
+@using DispatchCore.Contracts
+@using DispatchCore.Core.Interfaces
+@inject IJobRepository JobRepo
+@inject NavigationManager Nav
+
+<div class="container">
+    @if (_job is null)
+    {
+        <div class="card"><p>Job not found.</p></div>
+    }
+    else
+    {
+        <h2>Job Detail</h2>
+        <div class="card">
+            <table>
+                <tr><th style="width:180px">Job ID</th><td>@_job.JobId</td></tr>
+                <tr><th>Tenant ID</th><td>@_job.TenantId</td></tr>
+                <tr><th>Type</th><td>@_job.Type</td></tr>
+                <tr><th>Status</th><td><span class="badge badge-@_job.Status.ToString().ToLower()">@_job.Status</span></td></tr>
+                <tr><th>Attempts</th><td>@_job.Attempts / @_job.MaxAttempts</td></tr>
+                <tr><th>Run At</th><td>@_job.RunAt</td></tr>
+                <tr><th>Created At</th><td>@_job.CreatedAt</td></tr>
+                <tr><th>Updated At</th><td>@_job.UpdatedAt</td></tr>
+                <tr><th>Partition Key</th><td>@(_job.PartitionKey ?? "—")</td></tr>
+                <tr><th>Idempotency Key</th><td>@(_job.IdempotencyKey ?? "—")</td></tr>
+                <tr><th>Locked By</th><td>@(_job.LockedBy ?? "—")</td></tr>
+                <tr><th>Lock Until</th><td>@(_job.LockUntil?.ToString() ?? "—")</td></tr>
+                <tr><th>Last Error</th><td style="color:#dc3545">@(_job.LastError ?? "—")</td></tr>
+                <tr><th>Payload</th><td><pre style="margin:0;white-space:pre-wrap">@_job.Payload</pre></td></tr>
+            </table>
+
+            <div style="margin-top:16px;display:flex;gap:10px">
+                @if (_job.Status is JobStatus.Pending or JobStatus.Scheduled)
+                {
+                    <button class="btn btn-danger" @onclick="Cancel">Cancel</button>
+                }
+                @if (_job.Status is JobStatus.DeadLetter)
+                {
+                    <button class="btn btn-warning" @onclick="Requeue">Requeue</button>
+                }
+                <button class="btn btn-primary" @onclick="GoHome">Back</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid JobId { get; set; }
+    private DispatchCore.Core.Models.Job? _job;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _job = await JobRepo.GetByIdAsync(JobId);
+    }
+
+    private async Task Cancel()
+    {
+        if (_job is null) return;
+        _job.Status = JobStatus.Failed;
+        _job.LastError = "Cancelled via dashboard";
+        _job.LockedBy = null;
+        _job.LockUntil = null;
+        await JobRepo.UpdateAsync(_job);
+        _job = await JobRepo.GetByIdAsync(JobId);
+    }
+
+    private async Task Requeue()
+    {
+        if (_job is null) return;
+        _job.Status = JobStatus.Pending;
+        _job.Attempts = 0;
+        _job.LastError = null;
+        _job.RunAt = DateTimeOffset.UtcNow;
+        _job.LockedBy = null;
+        _job.LockUntil = null;
+        await JobRepo.UpdateAsync(_job);
+        _job = await JobRepo.GetByIdAsync(JobId);
+    }
+
+    private void GoHome()
+    {
+        Nav.NavigateTo("/");
+    }
+}
