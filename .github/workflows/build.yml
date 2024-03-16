@@ -1,0 +1,98 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ main, 'feat/**', 'fix/**', 'chore/**' ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_NOLOGO: true
+
+jobs:
+  build:
+    name: Build & Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore dispatch-core.sln
+
+      - name: Build
+        run: dotnet build dispatch-core.sln --no-restore --configuration Release
+
+      - name: Unit Tests
+        run: dotnet test tests/DispatchCore.Tests.Unit --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=unit-results.trx"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-results
+          path: '**/unit-results.trx'
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: build
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: dispatch_core
+          POSTGRES_USER: dispatch
+          POSTGRES_PASSWORD: dispatch_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore dispatch-core.sln
+
+      - name: Build
+        run: dotnet build dispatch-core.sln --no-restore --configuration Release
+
+      - name: Integration Tests
+        run: dotnet test tests/DispatchCore.Tests.Integration --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=integration-results.trx"
+        env:
+          ConnectionStrings__Postgres: "Host=localhost;Port=5432;Database=dispatch_core;Username=dispatch;Password=dispatch_secret"
+          ConnectionStrings__Redis: "localhost:6379"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: '**/integration-results.trx'
