@@ -19,6 +19,14 @@ public sealed class PostgresJobRepository : IJobRepository
 
     private NpgsqlConnection CreateConnection() => new(_connectionString);
 
+    private const string JobColumns = """
+        job_id, tenant_id, type, payload,
+        status::text AS status,
+        run_at, attempts, max_attempts, last_error,
+        created_at, updated_at, locked_by, lock_until,
+        partition_key, idempotency_key
+        """;
+
     private static object ToParams(Job job) => new
     {
         job.JobId,
@@ -40,12 +48,12 @@ public sealed class PostgresJobRepository : IJobRepository
 
     public async Task<Job> CreateAsync(Job job, CancellationToken ct = default)
     {
-        const string sql = """
+        var sql = $"""
             INSERT INTO jobs (job_id, tenant_id, type, payload, status, run_at, attempts, max_attempts,
                               last_error, created_at, updated_at, locked_by, lock_until, partition_key, idempotency_key)
             VALUES (@JobId, @TenantId, @Type, @Payload::jsonb, @Status::job_status, @RunAt, @Attempts, @MaxAttempts,
                     @LastError, @CreatedAt, @UpdatedAt, @LockedBy, @LockUntil, @PartitionKey, @IdempotencyKey)
-            RETURNING *;
+            RETURNING {JobColumns};
             """;
 
         await using var conn = CreateConnection();
@@ -55,7 +63,7 @@ public sealed class PostgresJobRepository : IJobRepository
 
     public async Task<Job?> GetByIdAsync(Guid jobId, CancellationToken ct = default)
     {
-        const string sql = "SELECT * FROM jobs WHERE job_id = @JobId";
+        var sql = $"SELECT {JobColumns} FROM jobs WHERE job_id = @JobId";
         await using var conn = CreateConnection();
         await conn.OpenAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<Job>(sql, new { JobId = jobId });
@@ -63,7 +71,7 @@ public sealed class PostgresJobRepository : IJobRepository
 
     public async Task<Job?> FindByIdempotencyKeyAsync(string tenantId, string idempotencyKey, CancellationToken ct = default)
     {
-        const string sql = "SELECT * FROM jobs WHERE tenant_id = @TenantId AND idempotency_key = @IdempotencyKey";
+        var sql = $"SELECT {JobColumns} FROM jobs WHERE tenant_id = @TenantId AND idempotency_key = @IdempotencyKey";
         await using var conn = CreateConnection();
         await conn.OpenAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<Job>(sql, new { TenantId = tenantId, IdempotencyKey = idempotencyKey });
@@ -71,7 +79,7 @@ public sealed class PostgresJobRepository : IJobRepository
 
     public async Task<IReadOnlyList<Job>> GetByTenantAsync(string tenantId, int limit = 50, int offset = 0, CancellationToken ct = default)
     {
-        const string sql = "SELECT * FROM jobs WHERE tenant_id = @TenantId ORDER BY created_at DESC LIMIT @Limit OFFSET @Offset";
+        var sql = $"SELECT {JobColumns} FROM jobs WHERE tenant_id = @TenantId ORDER BY created_at DESC LIMIT @Limit OFFSET @Offset";
         await using var conn = CreateConnection();
         await conn.OpenAsync(ct);
         var results = await conn.QueryAsync<Job>(sql, new { TenantId = tenantId, Limit = limit, Offset = offset });
@@ -99,7 +107,7 @@ public sealed class PostgresJobRepository : IJobRepository
                 LIMIT @BatchSize
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING *;
+            RETURNING {JobColumns};
             """;
 
         await using var conn = CreateConnection();
@@ -153,7 +161,7 @@ public sealed class PostgresJobRepository : IJobRepository
 
     public async Task<IReadOnlyList<Job>> GetRecentJobsAsync(int limit = 25, CancellationToken ct = default)
     {
-        const string sql = "SELECT * FROM jobs ORDER BY created_at DESC LIMIT @Limit";
+        var sql = $"SELECT {JobColumns} FROM jobs ORDER BY created_at DESC LIMIT @Limit";
         await using var conn = CreateConnection();
         await conn.OpenAsync(ct);
         var results = await conn.QueryAsync<Job>(sql, new { Limit = limit });
