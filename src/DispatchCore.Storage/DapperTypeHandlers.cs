@@ -26,6 +26,10 @@ public static class DapperConfig
     {
         if (_initialized) return;
         SqlMapper.AddTypeHandler(new JobStatusTypeHandler());
+
+        // Map snake_case Postgres columns to PascalCase C# properties
+        DefaultTypeMap.MatchNamesWithUnderscores = true;
+
         _initialized = true;
     }
 }

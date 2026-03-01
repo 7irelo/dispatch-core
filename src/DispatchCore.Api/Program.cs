@@ -16,6 +16,11 @@ Log.Logger = new LoggerConfiguration()
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
+
 var connectionString = builder.Configuration.GetConnectionString("Postgres")!;
 var redisConnection = builder.Configuration.GetConnectionString("Redis")!;
 

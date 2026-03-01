@@ -9,6 +9,7 @@ namespace DispatchCore.Storage;
 public sealed class PostgresJobRepository : IJobRepository
 {
     private readonly string _connectionString;
+    private static readonly string WorkerId = $"worker-{Environment.MachineName}-{Environment.ProcessId}";
 
     public PostgresJobRepository(string connectionString)
     {
@@ -17,6 +18,25 @@ public sealed class PostgresJobRepository : IJobRepository
     }
 
     private NpgsqlConnection CreateConnection() => new(_connectionString);
+
+    private static object ToParams(Job job) => new
+    {
+        job.JobId,
+        job.TenantId,
+        job.Type,
+        job.Payload,
+        Status = job.Status.ToString(),
+        job.RunAt,
+        job.Attempts,
+        job.MaxAttempts,
+        job.LastError,
+        job.CreatedAt,
+        job.UpdatedAt,
+        job.LockedBy,
+        job.LockUntil,
+        job.PartitionKey,
+        job.IdempotencyKey
+    };
 
     public async Task<Job> CreateAsync(Job job, CancellationToken ct = default)
     {
@@ -30,8 +50,7 @@ public sealed class PostgresJobRepository : IJobRepository
 
         await using var conn = CreateConnection();
         await conn.OpenAsync(ct);
-        var result = await conn.QuerySingleAsync<Job>(sql, job);
-        return result;
+        return await conn.QuerySingleAsync<Job>(sql, ToParams(job));
     }
 
     public async Task<Job?> GetByIdAsync(Guid jobId, CancellationToken ct = default)
@@ -83,14 +102,12 @@ public sealed class PostgresJobRepository : IJobRepository
             RETURNING *;
             """;
 
-        var workerId = $"worker-{Environment.MachineName}-{Environment.ProcessId}";
-
         await using var conn = CreateConnection();
         await conn.OpenAsync(ct);
         var results = await conn.QueryAsync<Job>(sql, new
         {
             BatchSize = batchSize,
-            LockedBy = workerId,
+            LockedBy = WorkerId,
             LockUntil = DateTimeOffset.UtcNow.AddMinutes(5),
             PartitionKey = partitionKey
         });
@@ -114,7 +131,7 @@ public sealed class PostgresJobRepository : IJobRepository
 
         await using var conn = CreateConnection();
         await conn.OpenAsync(ct);
-        await conn.ExecuteAsync(sql, job);
+        await conn.ExecuteAsync(sql, ToParams(job));
     }
 
     public async Task<int> ResetExpiredLocksAsync(TimeSpan lockTimeout, CancellationToken ct = default)
