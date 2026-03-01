@@ -5,8 +5,8 @@ A production-grade distributed job processing system built with .NET 8. Designed
 [![Build & Test](https://github.com/7irelo/dispatch-core/actions/workflows/build.yml/badge.svg)](https://github.com/7irelo/dispatch-core/actions/workflows/build.yml)
 
 <p>
-  <img width="1918" height="987" alt="image" src="https://github.com/user-attachments/assets/6939e6d4-0776-451f-9fb2-2d8599475b70" />
-  <img width="1901" height="992" alt="image" src="https://github.com/user-attachments/assets/00d41d0d-aed8-44cb-ae33-cf986d1dfbb0" />
+  <img width="49%" alt="Dashboard" src="https://github.com/user-attachments/assets/6939e6d4-0776-451f-9fb2-2d8599475b70" />
+  <img width="49%" alt="Job Detail" src="https://github.com/user-attachments/assets/00d41d0d-aed8-44cb-ae33-cf986d1dfbb0" />
 </p>
 
 ## Features
