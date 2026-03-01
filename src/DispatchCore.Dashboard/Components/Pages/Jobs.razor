@@ -1,0 +1,202 @@
+@page "/jobs"
+@using DispatchCore.Contracts
+@using DispatchCore.Core.Interfaces
+@using DispatchCore.Core.Models
+@inject IJobRepository JobRepo
+
+<div class="dc-breadcrumb">
+    <a href="/">Dashboard</a>
+    <span class="sep">/</span>
+    <span class="current">Jobs</span>
+</div>
+
+<div class="dc-card">
+    <div class="dc-card-header">
+        <h3>Job Search</h3>
+    </div>
+    <div class="dc-card-body" style="padding: 0;">
+        @* ── Filter Bar ── *@
+        <div style="padding: 12px 20px; border-bottom: 1px solid var(--dc-border);">
+            <div class="dc-filter-bar">
+                <input class="dc-input" @bind="_searchTenantId" placeholder="Tenant ID" />
+                <select class="dc-select" @bind="_statusFilter">
+                    <option value="">All Statuses</option>
+                    @foreach (var s in Enum.GetValues<JobStatus>())
+                    {
+                        <option value="@s">@s</option>
+                    }
+                </select>
+                <input class="dc-input" @bind="_typeFilter" placeholder="Filter by type..." />
+                <button class="dc-btn dc-btn-primary" @onclick="SearchJobs" disabled="@_searching">
+                    @if (_searching) { <span class="dc-spinner"></span> }
+                    Search
+                </button>
+            </div>
+        </div>
+
+        @if (_searching)
+        {
+            <div style="padding: 20px;">
+                @for (var i = 0; i < 5; i++)
+                {
+                    <div class="dc-skeleton dc-skeleton-row"></div>
+                }
+            </div>
+        }
+        else if (_jobs.Any())
+        {
+            <table class="dc-table">
+                <thead>
+                    <tr>
+                        <th>Job ID</th>
+                        <th>Tenant</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Attempts</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var job in _jobs)
+                    {
+                        <tr>
+                            <td><a href="/jobs/@job.JobId" class="mono">@job.JobId.ToString()[..8]</a></td>
+                            <td>@job.TenantId</td>
+                            <td><span class="dc-type-badge">@job.Type</span></td>
+                            <td><span class="dc-badge dc-badge-@job.Status.ToString().ToLower()">@job.Status</span></td>
+                            <td>@job.Attempts / @job.MaxAttempts</td>
+                            <td title="@job.CreatedAt.ToString("O")">@FormatRelativeTime(job.CreatedAt)</td>
+                            <td>
+                                @if (job.Status is JobStatus.Pending or JobStatus.Scheduled)
+                                {
+                                    <button class="dc-btn dc-btn-danger-outline" @onclick="() => CancelJob(job.JobId)">Cancel</button>
+                                }
+                                @if (job.Status is JobStatus.DeadLetter)
+                                {
+                                    <button class="dc-btn dc-btn-warning-outline" @onclick="() => RequeueJob(job.JobId)">Requeue</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else if (_searched)
+        {
+            <div style="padding: 40px 20px; text-align: center; color: var(--dc-text-muted);">
+                @if (string.IsNullOrWhiteSpace(_searchTenantId))
+                {
+                    <span>Enter a Tenant ID to search for jobs.</span>
+                }
+                else
+                {
+                    <span>No jobs found.</span>
+                }
+            </div>
+        }
+        else
+        {
+            <div style="padding: 40px 20px; text-align: center; color: var(--dc-text-muted);">
+                Enter a Tenant ID and click Search to find jobs.
+            </div>
+        }
+    </div>
+</div>
+
+@* ── Toasts ── *@
+@if (_toasts.Any())
+{
+    <div class="dc-toast-container">
+        @foreach (var toast in _toasts)
+        {
+            <div class="dc-toast @toast.CssClass">@toast.Message</div>
+        }
+    </div>
+}
+
+@code {
+    private List<Job> _jobs = new();
+    private string _searchTenantId = "";
+    private string _statusFilter = "";
+    private string _typeFilter = "";
+    private bool _searched;
+    private bool _searching;
+    private List<ToastItem> _toasts = new();
+
+    private async Task SearchJobs()
+    {
+        _searched = true;
+        if (string.IsNullOrWhiteSpace(_searchTenantId))
+        {
+            _jobs = new();
+            return;
+        }
+
+        _searching = true;
+        StateHasChanged();
+
+        var allJobs = await JobRepo.GetByTenantAsync(_searchTenantId, 100);
+        var filtered = allJobs.AsEnumerable();
+
+        if (!string.IsNullOrEmpty(_statusFilter))
+            filtered = filtered.Where(j => j.Status.ToString() == _statusFilter);
+
+        if (!string.IsNullOrWhiteSpace(_typeFilter))
+            filtered = filtered.Where(j => j.Type.Contains(_typeFilter, StringComparison.OrdinalIgnoreCase));
+
+        _jobs = filtered.ToList();
+        _searching = false;
+    }
+
+    private async Task CancelJob(Guid jobId)
+    {
+        var job = await JobRepo.GetByIdAsync(jobId);
+        if (job is null) return;
+        job.Status = JobStatus.Failed;
+        job.LastError = "Cancelled via dashboard";
+        job.LockedBy = null;
+        job.LockUntil = null;
+        await JobRepo.UpdateAsync(job);
+        await SearchJobs();
+        ShowToast("Job cancelled", false);
+    }
+
+    private async Task RequeueJob(Guid jobId)
+    {
+        var job = await JobRepo.GetByIdAsync(jobId);
+        if (job is null) return;
+        job.Status = JobStatus.Pending;
+        job.Attempts = 0;
+        job.LastError = null;
+        job.RunAt = DateTimeOffset.UtcNow;
+        job.LockedBy = null;
+        job.LockUntil = null;
+        await JobRepo.UpdateAsync(job);
+        await SearchJobs();
+        ShowToast("Job requeued", true);
+    }
+
+    private void ShowToast(string message, bool success)
+    {
+        var toast = new ToastItem(message, success ? "dc-toast-success" : "dc-toast-error");
+        _toasts.Add(toast);
+        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            _toasts.Remove(toast);
+            StateHasChanged();
+        }));
+    }
+
+    private static string FormatRelativeTime(DateTimeOffset time)
+    {
+        var diff = DateTimeOffset.UtcNow - time;
+        if (diff.TotalSeconds < 60) return $"{(int)diff.TotalSeconds}s ago";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        return time.ToString("MMM d");
+    }
+
+    private sealed record ToastItem(string Message, string CssClass);
+}
