@@ -1,0 +1,58 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+
+<div class="dc-layout">
+    <aside class="dc-sidebar">
+        <div class="dc-sidebar-logo">
+            <h1>Dispatch Core</h1>
+            <span>Job Processing Engine</span>
+        </div>
+        <nav class="dc-sidebar-nav">
+            <a href="/" class="@NavClass("/")">
+                <span class="nav-icon">&#9707;</span> Dashboard
+            </a>
+            <a href="/" class="@NavClass("/jobs")">
+                <span class="nav-icon">&#9776;</span> Jobs
+            </a>
+        </nav>
+        <div class="dc-sidebar-footer">
+            Dispatch Core v1.0
+        </div>
+    </aside>
+
+    <div class="dc-main">
+        <header class="dc-header">
+            <span class="dc-header-title">@_pageTitle</span>
+            <div class="dc-header-actions">
+                @HeaderActions
+            </div>
+        </header>
+        <main class="dc-content">
+            @Body
+        </main>
+    </div>
+</div>
+
+<div class="dc-toast-container" id="toast-container"></div>
+
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    private string _pageTitle = "Dashboard";
+
+    /// <summary>
+    /// Render fragment for header actions — pages can set this via cascading value.
+    /// </summary>
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
+
+    private string NavClass(string href)
+    {
+        var uri = Nav.ToBaseRelativePath(Nav.Uri);
+        var path = "/" + uri;
+
+        if (href == "/")
+            return path == "/" || path == "" ? "active" : "";
+
+        return path.StartsWith(href, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+    }
+}

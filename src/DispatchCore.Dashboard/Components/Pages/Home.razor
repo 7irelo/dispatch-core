@@ -1,42 +1,101 @@
 @page "/"
 @using DispatchCore.Contracts
 @using DispatchCore.Core.Interfaces
+@using DispatchCore.Core.Models
 @inject IJobRepository JobRepo
+@implements IDisposable
 
-<div class="container">
-    <h2>Metrics Overview</h2>
-    @if (_metrics is not null)
-    {
-        <div class="card">
-            <div class="metrics-grid">
-                <div class="metric"><div class="value">@_metrics.TotalJobs</div><div class="label">Total</div></div>
-                <div class="metric"><div class="value">@_metrics.PendingJobs</div><div class="label">Pending</div></div>
-                <div class="metric"><div class="value">@_metrics.ScheduledJobs</div><div class="label">Scheduled</div></div>
-                <div class="metric"><div class="value">@_metrics.RunningJobs</div><div class="label">Running</div></div>
-                <div class="metric"><div class="value">@_metrics.SucceededJobs</div><div class="label">Succeeded</div></div>
-                <div class="metric"><div class="value">@_metrics.FailedJobs</div><div class="label">Failed</div></div>
-                <div class="metric"><div class="value">@_metrics.DeadLetterJobs</div><div class="label">Dead Letter</div></div>
+@* ── Metrics ── *@
+@if (_loading)
+{
+    <div class="dc-metrics">
+        @for (var i = 0; i < 7; i++)
+        {
+            <div class="dc-skeleton dc-skeleton-card"></div>
+        }
+    </div>
+}
+else if (_metrics is not null)
+{
+    <div class="dc-metrics">
+        <div class="dc-metric total">
+            <div class="dc-metric-icon">&#9635;</div>
+            <div class="dc-metric-label">Total Jobs</div>
+            <div class="dc-metric-value">@_metrics.TotalJobs</div>
+        </div>
+        <div class="dc-metric pending">
+            <div class="dc-metric-icon">&#9202;</div>
+            <div class="dc-metric-label">Pending</div>
+            <div class="dc-metric-value">@_metrics.PendingJobs</div>
+        </div>
+        <div class="dc-metric running">
+            <div class="dc-metric-icon">&#9654;</div>
+            <div class="dc-metric-label">Running</div>
+            <div class="dc-metric-value">@_metrics.RunningJobs</div>
+        </div>
+    </div>
+    <div class="dc-metrics">
+        <div class="dc-metric succeeded">
+            <div class="dc-metric-icon">&#10003;</div>
+            <div class="dc-metric-label">Succeeded</div>
+            <div class="dc-metric-value">@_metrics.SucceededJobs</div>
+        </div>
+        <div class="dc-metric failed">
+            <div class="dc-metric-icon">&#10007;</div>
+            <div class="dc-metric-label">Failed</div>
+            <div class="dc-metric-value">@_metrics.FailedJobs</div>
+        </div>
+        <div class="dc-metric deadletter">
+            <div class="dc-metric-icon">&#9760;</div>
+            <div class="dc-metric-label">Dead Letter</div>
+            <div class="dc-metric-value">@_metrics.DeadLetterJobs</div>
+        </div>
+        <div class="dc-metric scheduled">
+            <div class="dc-metric-icon">&#128339;</div>
+            <div class="dc-metric-label">Scheduled</div>
+            <div class="dc-metric-value">@_metrics.ScheduledJobs</div>
+        </div>
+    </div>
+}
+
+@* ── Recent Jobs ── *@
+<div class="dc-card" style="margin-top: 4px;">
+    <div class="dc-card-header">
+        <h3>Recent Jobs</h3>
+        <label class="dc-toggle">
+            <input type="checkbox" checked="@_autoRefresh" @onchange="ToggleAutoRefresh" />
+            <span class="dc-toggle-track"></span>
+            Auto-refresh
+        </label>
+    </div>
+    <div class="dc-card-body" style="padding: 0;">
+        @* ── Filter Bar ── *@
+        <div style="padding: 12px 20px; border-bottom: 1px solid var(--dc-border);">
+            <div class="dc-filter-bar">
+                <select class="dc-select" @bind="_statusFilter">
+                    <option value="">All Statuses</option>
+                    @foreach (var s in Enum.GetValues<JobStatus>())
+                    {
+                        <option value="@s">@s</option>
+                    }
+                </select>
+                <input class="dc-input" @bind="_typeFilter" placeholder="Filter by type..." />
+                <button class="dc-btn dc-btn-primary" @onclick="ApplyFilter">Search</button>
             </div>
         </div>
-    }
 
-    <h2>Job Search</h2>
-    <div class="card">
-        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-            <input @bind="_searchTenantId" placeholder="Tenant ID" />
-            <select @bind="_statusFilter">
-                <option value="">All Statuses</option>
-                @foreach (var s in Enum.GetValues<JobStatus>())
-                {
-                    <option value="@s">@s</option>
-                }
-            </select>
-            <button class="btn btn-primary" @onclick="SearchJobs">Search</button>
-        </div>
-
-        @if (_jobs.Any())
+        @if (_loading)
         {
-            <table>
+            <div style="padding: 20px;">
+                @for (var i = 0; i < 5; i++)
+                {
+                    <div class="dc-skeleton dc-skeleton-row"></div>
+                }
+            </div>
+        }
+        else if (_filteredJobs.Any())
+        {
+            <table class="dc-table">
                 <thead>
                     <tr>
                         <th>Job ID</th>
@@ -49,23 +108,23 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var job in _jobs)
+                    @foreach (var job in _filteredJobs)
                     {
                         <tr>
-                            <td><a href="/jobs/@job.JobId">@job.JobId.ToString()[..8]...</a></td>
+                            <td><a href="/jobs/@job.JobId" class="mono">@job.JobId.ToString()[..8]</a></td>
                             <td>@job.TenantId</td>
-                            <td>@job.Type</td>
-                            <td><span class="badge badge-@job.Status.ToString().ToLower()">@job.Status</span></td>
+                            <td><span class="dc-type-badge">@job.Type</span></td>
+                            <td><span class="dc-badge dc-badge-@job.Status.ToString().ToLower()">@job.Status</span></td>
                             <td>@job.Attempts / @job.MaxAttempts</td>
-                            <td>@job.CreatedAt.ToString("g")</td>
+                            <td title="@job.CreatedAt.ToString("O")">@FormatRelativeTime(job.CreatedAt)</td>
                             <td>
                                 @if (job.Status is JobStatus.Pending or JobStatus.Scheduled)
                                 {
-                                    <button class="btn btn-danger" @onclick="() => CancelJob(job.JobId)">Cancel</button>
+                                    <button class="dc-btn dc-btn-danger-outline" @onclick="() => CancelJob(job.JobId)">Cancel</button>
                                 }
                                 @if (job.Status is JobStatus.DeadLetter)
                                 {
-                                    <button class="btn btn-warning" @onclick="() => RequeueJob(job.JobId)">Requeue</button>
+                                    <button class="dc-btn dc-btn-warning-outline" @onclick="() => RequeueJob(job.JobId)">Requeue</button>
                                 }
                             </td>
                         </tr>
@@ -73,38 +132,89 @@
                 </tbody>
             </table>
         }
-        else if (_searched)
+        else
         {
-            <p>No jobs found.</p>
+            <div style="padding: 40px 20px; text-align: center; color: var(--dc-text-muted);">
+                No jobs found.
+            </div>
         }
     </div>
 </div>
 
+@* ── Toast Container ── *@
+@if (_toasts.Any())
+{
+    <div class="dc-toast-container">
+        @foreach (var toast in _toasts)
+        {
+            <div class="dc-toast @toast.CssClass">@toast.Message</div>
+        }
+    </div>
+}
+
 @code {
     private MetricsResponse? _metrics;
-    private List<DispatchCore.Core.Models.Job> _jobs = new();
-    private string _searchTenantId = "";
+    private List<Job> _recentJobs = new();
+    private List<Job> _filteredJobs = new();
     private string _statusFilter = "";
-    private bool _searched;
+    private string _typeFilter = "";
+    private bool _loading = true;
+    private bool _autoRefresh = true;
+    private Timer? _timer;
+    private List<ToastItem> _toasts = new();
 
     protected override async Task OnInitializedAsync()
     {
-        _metrics = await JobRepo.GetMetricsAsync();
+        await LoadData();
+        _loading = false;
+        StartAutoRefresh();
     }
 
-    private async Task SearchJobs()
+    private async Task LoadData()
     {
-        _searched = true;
-        if (string.IsNullOrWhiteSpace(_searchTenantId))
-        {
-            _jobs = new();
-            return;
-        }
+        _metrics = await JobRepo.GetMetricsAsync();
+        _recentJobs = (await JobRepo.GetRecentJobsAsync(25)).ToList();
+        ApplyFilterInternal();
+    }
 
-        var allJobs = await JobRepo.GetByTenantAsync(_searchTenantId, 100);
-        _jobs = string.IsNullOrEmpty(_statusFilter)
-            ? allJobs.ToList()
-            : allJobs.Where(j => j.Status.ToString() == _statusFilter).ToList();
+    private void ApplyFilterInternal()
+    {
+        var filtered = _recentJobs.AsEnumerable();
+
+        if (!string.IsNullOrEmpty(_statusFilter))
+            filtered = filtered.Where(j => j.Status.ToString() == _statusFilter);
+
+        if (!string.IsNullOrWhiteSpace(_typeFilter))
+            filtered = filtered.Where(j => j.Type.Contains(_typeFilter, StringComparison.OrdinalIgnoreCase));
+
+        _filteredJobs = filtered.ToList();
+    }
+
+    private void ApplyFilter()
+    {
+        ApplyFilterInternal();
+    }
+
+    private void ToggleAutoRefresh(ChangeEventArgs e)
+    {
+        _autoRefresh = (bool)(e.Value ?? false);
+        if (_autoRefresh)
+            StartAutoRefresh();
+        else
+            _timer?.Dispose();
+    }
+
+    private void StartAutoRefresh()
+    {
+        _timer?.Dispose();
+        _timer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadData();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
     private async Task CancelJob(Guid jobId)
@@ -116,8 +226,8 @@
         job.LockedBy = null;
         job.LockUntil = null;
         await JobRepo.UpdateAsync(job);
-        await SearchJobs();
-        _metrics = await JobRepo.GetMetricsAsync();
+        await LoadData();
+        ShowToast("Job cancelled", false);
     }
 
     private async Task RequeueJob(Guid jobId)
@@ -131,7 +241,35 @@
         job.LockedBy = null;
         job.LockUntil = null;
         await JobRepo.UpdateAsync(job);
-        await SearchJobs();
-        _metrics = await JobRepo.GetMetricsAsync();
+        await LoadData();
+        ShowToast("Job requeued", true);
     }
+
+    private void ShowToast(string message, bool success)
+    {
+        var toast = new ToastItem(message, success ? "dc-toast-success" : "dc-toast-error");
+        _toasts.Add(toast);
+        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            _toasts.Remove(toast);
+            StateHasChanged();
+        }));
+    }
+
+    private static string FormatRelativeTime(DateTimeOffset time)
+    {
+        var diff = DateTimeOffset.UtcNow - time;
+        if (diff.TotalSeconds < 60) return $"{(int)diff.TotalSeconds}s ago";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        return time.ToString("MMM d");
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+
+    private sealed record ToastItem(string Message, string CssClass);
 }

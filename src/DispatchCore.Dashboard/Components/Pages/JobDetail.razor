@@ -1,73 +1,251 @@
 @page "/jobs/{JobId:guid}"
 @using DispatchCore.Contracts
 @using DispatchCore.Core.Interfaces
+@using DispatchCore.Core.Models
 @inject IJobRepository JobRepo
 @inject NavigationManager Nav
 
-<div class="container">
-    @if (_job is null)
-    {
-        <div class="card"><p>Job not found.</p></div>
-    }
-    else
-    {
-        <h2>Job Detail</h2>
-        <div class="card">
-            <table>
-                <tr><th style="width:180px">Job ID</th><td>@_job.JobId</td></tr>
-                <tr><th>Tenant ID</th><td>@_job.TenantId</td></tr>
-                <tr><th>Type</th><td>@_job.Type</td></tr>
-                <tr><th>Status</th><td><span class="badge badge-@_job.Status.ToString().ToLower()">@_job.Status</span></td></tr>
-                <tr><th>Attempts</th><td>@_job.Attempts / @_job.MaxAttempts</td></tr>
-                <tr><th>Run At</th><td>@_job.RunAt</td></tr>
-                <tr><th>Created At</th><td>@_job.CreatedAt</td></tr>
-                <tr><th>Updated At</th><td>@_job.UpdatedAt</td></tr>
-                <tr><th>Partition Key</th><td>@(_job.PartitionKey ?? "—")</td></tr>
-                <tr><th>Idempotency Key</th><td>@(_job.IdempotencyKey ?? "—")</td></tr>
-                <tr><th>Locked By</th><td>@(_job.LockedBy ?? "—")</td></tr>
-                <tr><th>Lock Until</th><td>@(_job.LockUntil?.ToString() ?? "—")</td></tr>
-                <tr><th>Last Error</th><td style="color:#dc3545">@(_job.LastError ?? "—")</td></tr>
-                <tr><th>Payload</th><td><pre style="margin:0;white-space:pre-wrap">@_job.Payload</pre></td></tr>
-            </table>
+@* ── Breadcrumb ── *@
+<div class="dc-breadcrumb">
+    <a href="/">Dashboard</a>
+    <span class="sep">/</span>
+    <span class="current">Job @JobId.ToString()[..8]</span>
+</div>
 
-            <div style="margin-top:16px;display:flex;gap:10px">
-                @if (_job.Status is JobStatus.Pending or JobStatus.Scheduled)
-                {
-                    <button class="btn btn-danger" @onclick="Cancel">Cancel</button>
-                }
-                @if (_job.Status is JobStatus.DeadLetter)
-                {
-                    <button class="btn btn-warning" @onclick="Requeue">Requeue</button>
-                }
-                <button class="btn btn-primary" @onclick="GoHome">Back</button>
+@if (_loading)
+{
+    <div class="dc-detail-grid">
+        <div class="dc-skeleton dc-skeleton-card" style="height: 300px;"></div>
+        <div class="dc-skeleton dc-skeleton-card" style="height: 300px;"></div>
+    </div>
+}
+else if (_job is null)
+{
+    <div class="dc-card">
+        <div class="dc-card-body" style="text-align: center; padding: 40px; color: var(--dc-text-muted);">
+            Job not found.
+            <div style="margin-top: 12px;">
+                <button class="dc-btn dc-btn-ghost" @onclick="GoHome">Back to Dashboard</button>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    @* ── Detail Grid ── *@
+    <div class="dc-detail-grid">
+        @* Left Panel — Key Info *@
+        <div class="dc-card">
+            <div class="dc-card-header">
+                <h3>Job Information</h3>
+                <span class="dc-badge dc-badge-@_job.Status.ToString().ToLower()">@_job.Status</span>
+            </div>
+            <div class="dc-card-body">
+                <table class="dc-detail-table">
+                    <tr>
+                        <th>Job ID</th>
+                        <td style="font-family: var(--dc-font-mono); font-size: 12px;">@_job.JobId</td>
+                    </tr>
+                    <tr>
+                        <th>Tenant ID</th>
+                        <td>@_job.TenantId</td>
+                    </tr>
+                    <tr>
+                        <th>Type</th>
+                        <td><span class="dc-type-badge">@_job.Type</span></td>
+                    </tr>
+                    <tr>
+                        <th>Attempts</th>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span>@_job.Attempts / @_job.MaxAttempts</span>
+                                <div class="dc-progress" style="width: 100px;">
+                                    <div class="dc-progress-fill" style="width: @(AttemptPercent)%"></div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Run At</th>
+                        <td>@_job.RunAt.ToString("yyyy-MM-dd HH:mm:ss zzz")</td>
+                    </tr>
+                    <tr>
+                        <th>Created</th>
+                        <td>@_job.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss zzz")</td>
+                    </tr>
+                    <tr>
+                        <th>Updated</th>
+                        <td>@_job.UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss zzz")</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        @* Right Panel — Metadata *@
+        <div class="dc-card">
+            <div class="dc-card-header">
+                <h3>Metadata</h3>
+            </div>
+            <div class="dc-card-body">
+                <table class="dc-detail-table">
+                    <tr>
+                        <th>Partition Key</th>
+                        <td>@(_job.PartitionKey ?? "\u2014")</td>
+                    </tr>
+                    <tr>
+                        <th>Idempotency Key</th>
+                        <td style="font-family: var(--dc-font-mono); font-size: 12px;">@(_job.IdempotencyKey ?? "\u2014")</td>
+                    </tr>
+                    <tr>
+                        <th>Locked By</th>
+                        <td>@(_job.LockedBy ?? "\u2014")</td>
+                    </tr>
+                    <tr>
+                        <th>Lock Until</th>
+                        <td>@(_job.LockUntil?.ToString("yyyy-MM-dd HH:mm:ss zzz") ?? "\u2014")</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ── Error Alert ── *@
+    @if (!string.IsNullOrEmpty(_job.LastError))
+    {
+        <div class="dc-alert dc-alert-danger" style="margin-bottom: 24px;">
+            <strong>Last Error</strong>
+            <div style="margin-top: 4px;">@_job.LastError</div>
+        </div>
+    }
+
+    @* ── Payload ── *@
+    <div class="dc-card" style="margin-bottom: 24px;">
+        <div class="dc-card-header">
+            <h3>Payload</h3>
+        </div>
+        <div class="dc-card-body" style="padding: 0;">
+            <div class="dc-code">@FormatJson(_job.Payload)</div>
+        </div>
+    </div>
+
+    @* ── Attempt Timeline ── *@
+    @if (_job.Attempts > 0 || _job.MaxAttempts > 0)
+    {
+        <div class="dc-card" style="margin-bottom: 24px;">
+            <div class="dc-card-header">
+                <h3>Attempt History</h3>
+            </div>
+            <div class="dc-card-body">
+                <div class="dc-timeline">
+                    @for (var i = 1; i <= _job.Attempts; i++)
+                    {
+                        var isLast = i == _job.Attempts;
+                        var cssClass = isLast
+                            ? (_job.Status == JobStatus.Succeeded ? "success" : (_job.Status == JobStatus.Failed || _job.Status == JobStatus.DeadLetter ? "error" : "current"))
+                            : "error";
+                        <div class="dc-timeline-item @cssClass">
+                            <div class="dc-timeline-label">Attempt @i</div>
+                            <div class="dc-timeline-meta">
+                                @if (isLast && _job.Status == JobStatus.Succeeded)
+                                {
+                                    <span>Completed successfully</span>
+                                }
+                                else if (isLast && !string.IsNullOrEmpty(_job.LastError))
+                                {
+                                    <span>@_job.LastError</span>
+                                }
+                                else if (!isLast)
+                                {
+                                    <span>Failed — retried</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (_job.Attempts < _job.MaxAttempts && _job.Status is JobStatus.Pending or JobStatus.Running or JobStatus.Scheduled)
+                    {
+                        <div class="dc-timeline-item current">
+                            <div class="dc-timeline-label">Attempt @(_job.Attempts + 1)</div>
+                            <div class="dc-timeline-meta">
+                                @if (_job.Status == JobStatus.Running)
+                                {
+                                    <span><span class="dc-spinner"></span> In progress</span>
+                                }
+                                else
+                                {
+                                    <span>Pending</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
             </div>
         </div>
     }
-</div>
+
+    @* ── Actions ── *@
+    <div style="display: flex; gap: 10px;">
+        @if (_job.Status is JobStatus.Pending or JobStatus.Scheduled)
+        {
+            <button class="dc-btn dc-btn-danger-outline" @onclick="Cancel" disabled="@_actionInProgress">
+                @if (_actionInProgress) { <span class="dc-spinner"></span> } Cancel Job
+            </button>
+        }
+        @if (_job.Status is JobStatus.DeadLetter)
+        {
+            <button class="dc-btn dc-btn-warning-outline" @onclick="Requeue" disabled="@_actionInProgress">
+                @if (_actionInProgress) { <span class="dc-spinner"></span> } Requeue Job
+            </button>
+        }
+        <button class="dc-btn dc-btn-ghost" @onclick="GoHome">Back to Dashboard</button>
+    </div>
+}
+
+@* ── Toasts ── *@
+@if (_toasts.Any())
+{
+    <div class="dc-toast-container">
+        @foreach (var toast in _toasts)
+        {
+            <div class="dc-toast @toast.CssClass">@toast.Message</div>
+        }
+    </div>
+}
 
 @code {
     [Parameter] public Guid JobId { get; set; }
-    private DispatchCore.Core.Models.Job? _job;
+    private Job? _job;
+    private bool _loading = true;
+    private bool _actionInProgress;
+    private List<ToastItem> _toasts = new();
+
+    private int AttemptPercent => _job is not null && _job.MaxAttempts > 0
+        ? (int)((double)_job.Attempts / _job.MaxAttempts * 100)
+        : 0;
 
     protected override async Task OnInitializedAsync()
     {
         _job = await JobRepo.GetByIdAsync(JobId);
+        _loading = false;
     }
 
     private async Task Cancel()
     {
-        if (_job is null) return;
+        if (_job is null || _actionInProgress) return;
+        _actionInProgress = true;
         _job.Status = JobStatus.Failed;
         _job.LastError = "Cancelled via dashboard";
         _job.LockedBy = null;
         _job.LockUntil = null;
         await JobRepo.UpdateAsync(_job);
         _job = await JobRepo.GetByIdAsync(JobId);
+        _actionInProgress = false;
+        ShowToast("Job cancelled", false);
     }
 
     private async Task Requeue()
     {
-        if (_job is null) return;
+        if (_job is null || _actionInProgress) return;
+        _actionInProgress = true;
         _job.Status = JobStatus.Pending;
         _job.Attempts = 0;
         _job.LastError = null;
@@ -76,10 +254,35 @@
         _job.LockUntil = null;
         await JobRepo.UpdateAsync(_job);
         _job = await JobRepo.GetByIdAsync(JobId);
+        _actionInProgress = false;
+        ShowToast("Job requeued", true);
     }
 
-    private void GoHome()
+    private void GoHome() => Nav.NavigateTo("/");
+
+    private void ShowToast(string message, bool success)
     {
-        Nav.NavigateTo("/");
+        var toast = new ToastItem(message, success ? "dc-toast-success" : "dc-toast-error");
+        _toasts.Add(toast);
+        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            _toasts.Remove(toast);
+            StateHasChanged();
+        }));
     }
+
+    private static string FormatJson(string json)
+    {
+        try
+        {
+            var element = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+            return System.Text.Json.JsonSerializer.Serialize(element, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return json;
+        }
+    }
+
+    private sealed record ToastItem(string Message, string CssClass);
 }

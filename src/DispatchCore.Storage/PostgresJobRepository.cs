@@ -151,6 +151,15 @@ public sealed class PostgresJobRepository : IJobRepository
         return await conn.ExecuteAsync(sql);
     }
 
+    public async Task<IReadOnlyList<Job>> GetRecentJobsAsync(int limit = 25, CancellationToken ct = default)
+    {
+        const string sql = "SELECT * FROM jobs ORDER BY created_at DESC LIMIT @Limit";
+        await using var conn = CreateConnection();
+        await conn.OpenAsync(ct);
+        var results = await conn.QueryAsync<Job>(sql, new { Limit = limit });
+        return results.ToList().AsReadOnly();
+    }
+
     public async Task<MetricsResponse> GetMetricsAsync(CancellationToken ct = default)
     {
         const string sql = """

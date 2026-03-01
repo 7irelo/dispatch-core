@@ -12,5 +12,6 @@ public interface IJobRepository
     Task<IReadOnlyList<Job>> PollDueJobsAsync(int batchSize, string? partitionKey = null, CancellationToken ct = default);
     Task UpdateAsync(Job job, CancellationToken ct = default);
     Task<int> ResetExpiredLocksAsync(TimeSpan lockTimeout, CancellationToken ct = default);
+    Task<IReadOnlyList<Job>> GetRecentJobsAsync(int limit = 25, CancellationToken ct = default);
     Task<MetricsResponse> GetMetricsAsync(CancellationToken ct = default);
 }
