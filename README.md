@@ -4,6 +4,9 @@ A production-grade distributed job processing system built with .NET 8. Designed
 
 [![Build & Test](https://github.com/7irelo/dispatch-core/actions/workflows/build.yml/badge.svg)](https://github.com/7irelo/dispatch-core/actions/workflows/build.yml)
 
+<img width="1918" height="987" alt="{CDF7DD7B-E7A7-45A1-9AA5-3905E17980EE}" src="https://github.com/user-attachments/assets/af53c1d7-ba7c-496e-aa9f-cd8c98cb6c97" />
+<img width="1901" height="992" alt="{864367B4-9E7B-4749-B030-D64A22143D4F}" src="https://github.com/user-attachments/assets/7301f01b-eca1-498f-b015-05912413dfdc" />
+
 ## Features
 
 - **Atomic job claiming** — `SELECT ... FOR UPDATE SKIP LOCKED` prevents double-processing
