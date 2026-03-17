@@ -141,6 +141,27 @@ app.MapPost("/jobs/{id:guid}/cancel", async (Guid id, IJobRepository repo) =>
     return Results.Ok(MapToResponse(job));
 });
 
+// POST /jobs/{id}/retry
+app.MapPost("/jobs/{id:guid}/retry", async (Guid id, IJobRepository repo, int? maxAttempts) =>
+{
+    var job = await repo.GetByIdAsync(id);
+    if (job is null) return Results.NotFound();
+
+    if (job.Status is not (JobStatus.Failed or JobStatus.DeadLetter))
+        return Results.BadRequest(new { error = $"Cannot retry job in {job.Status} status" });
+
+    job.Status = JobStatus.Pending;
+    job.Attempts = 0;
+    job.MaxAttempts = maxAttempts ?? job.MaxAttempts;
+    job.LastError = null;
+    job.RunAt = DateTimeOffset.UtcNow;
+    job.LockedBy = null;
+    job.LockUntil = null;
+    job.UpdatedAt = DateTimeOffset.UtcNow;
+    await repo.UpdateAsync(job);
+    return Results.Ok(MapToResponse(job));
+});
+
 // POST /admin/requeue-deadletter/{id}
 app.MapPost("/admin/requeue-deadletter/{id:guid}", async (Guid id, IJobRepository repo) =>
 {
